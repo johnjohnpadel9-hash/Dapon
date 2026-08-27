@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DAPONCHECK - Betel Leaf Quality Checker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-leaf"></i>
+                <h1>DAPONCHECK</h1>
+            </div>
+            <p class="subtitle">Mobile Image-Based Quality Checker for Betel Leaf Processing</p>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="navigation">
+        <button class="nav-btn active" data-section="capture">
+            <i class="fas fa-camera"></i>
+            <span>Capture</span>
+        </button>
+        <button class="nav-btn" data-section="upload">
+            <i class="fas fa-upload"></i>
+            <span>Upload</span>
+        </button>
+        <button class="nav-btn" data-section="activity">
+            <i class="fas fa-history"></i>
+            <span>Activity</span>
+        </button>
+        <button class="nav-btn" data-section="settings">
+            <i class="fas fa-cog"></i>
+            <span>Settings</span>
+        </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Capture Section -->
+        <section id="capture" class="section active">
+            <div class="section-header">
+                <h2><i class="fas fa-camera"></i> Capture Image</h2>
+                <p>Take a photo of betel leaf for quality analysis</p>
+            </div>
+            
+            <div class="capture-container">
+                <div class="camera-preview">
+                    <video id="cameraFeed" autoplay playsinline></video>
+                    <canvas id="captureCanvas" style="display: none;"></canvas>
+                    <div class="camera-placeholder" id="cameraPlaceholder">
+                        <i class="fas fa-camera"></i>
+                        <p>Camera Preview</p>
+                    </div>
+                </div>
+                
+                <div class="capture-controls">
+                    <button id="startCamera" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Start Camera
+                    </button>
+                    <button id="captureBtn" class="btn btn-success" disabled>
+                        <i class="fas fa-camera"></i> Capture
+                    </button>
+                    <button id="stopCamera" class="btn btn-danger" disabled>
+                        <i class="fas fa-stop"></i> Stop Camera
+                    </button>
+                </div>
+            </div>
+
+            <div class="captured-image" id="capturedImageContainer" style="display: none;">
+                <h3>Captured Image</h3>
+                <img id="capturedImage" src="" alt="Captured betel leaf">
+                <div class="image-actions">
+                    <button id="analyzeCaptured" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Analyze Quality
+                    </button>
+                    <button id="retakePhoto" class="btn btn-secondary">
+                        <i class="fas fa-redo"></i> Retake
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Upload Section -->
+        <section id="upload" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-upload"></i> Upload Image</h2>
+                <p>Upload an existing betel leaf image for analysis</p>
+            </div>
+
+            <div class="upload-container">
+                <div class="upload-area" id="uploadArea">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Drag and drop your image here</p>
+                    <p class="upload-hint">or click to browse</p>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                </div>
+
+                <div class="uploaded-image" id="uploadedImageContainer" style="display: none;">
+                    <h3>Uploaded Image</h3>
+                    <img id="uploadedImage" src="" alt="Uploaded betel leaf">
+                    <div class="image-info">
+                        <p><strong>File Name:</strong> <span id="fileName"></span></p>
+                        <p><strong>File Size:</strong> <span id="fileSize"></span></p>
+                        <p><strong>Dimensions:</strong> <span id="imageDimensions"></span></p>
+                    </div>
+                    <div class="image-actions">
+                        <button id="analyzeUploaded" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Analyze Quality
+                        </button>
+                        <button id="clearUpload" class="btn btn-secondary">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Activity Section -->
+        <section id="activity" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-history"></i> Recent Activity</h2>
+                <p>View your recent betel leaf quality checks</p>
+            </div>
+
+            <div class="activity-filters">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="captured">Captured</button>
+                <button class="filter-btn" data-filter="uploaded">Uploaded</button>
+            </div>
+
+            <div class="activity-list" id="activityList">
+                <!-- Activity items will be loaded from database -->
+            </div>
+
+            <div class="activity-summary">
+                <div class="summary-card">
+                    <h3>Total Checks</h3>
+                    <p class="summary-number" id="statTotal">0</p>
+                </div>
+                <div class="summary-card">
+                    <h3>Excellent (A)</h3>
+                    <p class="summary-number success" id="statA">0</p>
+                </div>
+                <div class="summary-card">
+                    <h3>Good (B)</h3>
+                    <p class="summary-number warning" id="statB">0</p>
+                </div>
+                <div class="summary-card">
+                    <h3>Fair (C)</h3>
+                    <p class="summary-number warning" id="statC">0</p>
+                </div>
+                <div class="summary-card">
+                    <h3>Not Betel Leaf (D)</h3>
+                    <p class="summary-number danger" id="statD">0</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-cog"></i> Settings</h2>
+                <p>Configure your DAPONCHECK preferences</p>
+            </div>
+
+            <div class="settings-container">
+                <div class="settings-group">
+                    <h3><i class="fas fa-camera"></i> Camera Settings</h3>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Camera Resolution</h4>
+                            <p>Select the preferred camera quality</p>
+                        </div>
+                        <select id="cameraResolution" class="setting-select">
+                            <option value="high">High (1080p)</option>
+                            <option value="medium" selected>Medium (720p)</option>
+                            <option value="low">Low (480p)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Flash Mode</h4>
+                            <p>Enable flash when capturing images</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="flashMode">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Auto-Focus</h4>
+                            <p>Enable automatic focus adjustment</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoFocus" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3><i class="fas fa-sliders-h"></i> Analysis Settings</h3>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Analysis Sensitivity</h4>
+                            <p>Adjust the detection sensitivity</p>
+                        </div>
+                        <select id="analysisSensitivity" class="setting-select">
+                            <option value="high">High</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Auto-Analysis</h4>
+                            <p>Automatically analyze after capture/upload</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoAnalysis" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Show Confidence Score</h4>
+                            <p>Display analysis confidence percentage</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="showConfidence" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3><i class="fas fa-bell"></i> Notification Settings</h3>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Push Notifications</h4>
+                            <p>Receive notifications for analysis results</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pushNotifications" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Sound Alerts</h4>
+                            <p>Play sound when analysis completes</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="soundAlerts">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3><i class="fas fa-database"></i> Data & Storage</h3>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Save History</h4>
+                            <p>Keep record of all quality checks</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="saveHistory" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <h4>Clear History</h4>
+                            <p>Delete all activity records</p>
+                        </div>
+                        <button id="clearHistory" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Clear All
+                        </button>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3><i class="fas fa-info-circle"></i> About</h3>
+                    
+                    <div class="about-info">
+                        <p><strong>App Version:</strong> 1.0.0</p>
+                        <p><strong>Developer:</strong> DAPONCHECK Team</p>
+                        <p><strong>Capstone Project:</strong> Mobile Image-Based Quality Checker for Betel Leaf Processing</p>
+                        <p><strong>©</strong> 2024 All Rights Reserved</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>DAPONCHECK © 2024 - Betel Leaf Quality Checker</p>
+    </footer>
+
+    <!-- TensorFlow.js for ML model -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.10.0"></script>
+    <script src="script.js"></script>
+</body>
+</html>
