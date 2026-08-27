@@ -1,0 +1,4 @@
+High
+Medium
+Not_Betel_Leaf
+Poor
