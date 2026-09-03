@@ -15,7 +15,7 @@ class BetelLeafQualityModel {
         };
         this.isLoading = false;
         this.isLoaded = false;
-        this.modelPath = 'model/betel_leaf_quality_model.tflite';
+        this.modelPath = 'model/BetelLeafDataset_model.tflite';
     }
 
     /**
