@@ -3,7 +3,7 @@
 ## ✅ Pre-Launch Checklist
 
 ### Files & Structure
-- [ ] Model file exists: `model/betel_leaf_quality_model.tflite`
+- [ ] Model file exists: `model/BetelLeafDataset_model.tflite`
 - [ ] Labels file exists: `model/labels.txt`
 - [ ] All project files in place (index.html, script.js, api.php, etc.)
 - [ ] `ml-model.js` file created successfully
