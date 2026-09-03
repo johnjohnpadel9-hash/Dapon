@@ -7,7 +7,7 @@ Your DAPONCHECK betel leaf grading system now has **fully functional machine lea
 ## 📋 Changes Made
 
 ### 1. **New ML Model Manager** (`ml-model.js`)
-   - Loads TensorFlow Lite model from `model/betel_leaf_quality_model.tflite`
+   - Loads TensorFlow Lite model from `model/BetelLeafDataset_model.tflite`
    - Preprocesses images (resize to 224x224, normalize to [0,1])
    - Runs inference to classify betel leaf quality
    - Maps model outputs to grades A/B/C/D
