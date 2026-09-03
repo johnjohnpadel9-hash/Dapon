@@ -5,7 +5,7 @@
 ### Prerequisites
 - XAMPP installed and running (or any PHP 7.4+ server with MySQL)
 - All project files in place
-- TensorFlow Lite model file: `model/betel_leaf_quality_model.tflite`
+- TensorFlow Lite model file: `model/BetelLeafDataset_model.tflite`
 
 ### Step 1: Start XAMPP Services
 ```bash
