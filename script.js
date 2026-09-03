@@ -160,7 +160,30 @@ function updateSettings(settings) {
     const currentSettings = getSettings();
     const updated = { ...currentSettings, ...settings };
     localStorage.setItem(DB_KEYS.SETTINGS, JSON.stringify(updated));
+    return updated;
 }
+
+// Parsed settings used across the app
+function getAppSettings() {
+    const raw = getSettings();
+    return {
+        cameraResolution: raw.cameraResolution || 'medium',
+        flashMode: raw.flashMode === 'true',
+        autoFocus: raw.autoFocus !== 'false',
+        analysisSensitivity: raw.analysisSensitivity || 'medium',
+        autoAnalysis: raw.autoAnalysis !== 'false',
+        showConfidence: raw.showConfidence !== 'false',
+        pushNotifications: raw.pushNotifications !== 'false',
+        soundAlerts: raw.soundAlerts === 'true',
+        saveHistory: raw.saveHistory !== 'false'
+    };
+}
+
+const CAMERA_RESOLUTIONS = {
+    high: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+    medium: { width: { ideal: 1280 }, height: { ideal: 720 } },
+    low: { width: { ideal: 640 }, height: { ideal: 480 } }
+};
 
 // Statistics Functions
 function getStatistics() {
@@ -301,6 +324,37 @@ async function runTFLiteInference(imageData) {
     }
 }
 
+// Adjust analysis result based on sensitivity setting
+function applyAnalysisSensitivity(result) {
+    const { analysisSensitivity } = getAppSettings();
+    if (analysisSensitivity === 'medium') return result;
+
+    const gradeOrder = ['D', 'C', 'B', 'A'];
+    const adjusted = { ...result };
+    const idx = gradeOrder.indexOf(adjusted.grade);
+
+    if (analysisSensitivity === 'high') {
+        adjusted.confidence = Math.min(99, parseFloat((adjusted.confidence * 1.08).toFixed(2)));
+        if (idx >= 0 && idx < gradeOrder.length - 1 && adjusted.confidence >= 65) {
+            adjusted.grade = gradeOrder[idx + 1];
+            adjusted.gradeLabel = QUALITY_MODEL.grades[adjusted.grade]?.name || adjusted.gradeLabel;
+        }
+    } else if (analysisSensitivity === 'low') {
+        adjusted.confidence = Math.max(50, parseFloat((adjusted.confidence * 0.92).toFixed(2)));
+        if (idx > 0 && adjusted.confidence < 82) {
+            adjusted.grade = gradeOrder[idx - 1];
+            adjusted.gradeLabel = QUALITY_MODEL.grades[adjusted.grade]?.name || adjusted.gradeLabel;
+        }
+    }
+
+    adjusted.qualityClass =
+        adjusted.grade === 'A' ? 'excellent' :
+        adjusted.grade === 'B' ? 'good' :
+        adjusted.grade === 'C' ? 'fair' : 'poor';
+
+    return adjusted;
+}
+
 // Map CNN model output to grade using loaded labels
 function mapModelOutputToGrade(output) {
     // CNN output is probabilities for classes
@@ -335,7 +389,7 @@ function mapModelOutputToGrade(output) {
     
     return {
         grade: grade,
-        gradeLabel: label.replace('_', ' '), // Replace underscores with spaces for display
+        gradeLabel: label === 'Not_Betel_Leaf' ? 'Not a Betel Leaf' : label.replace(/_/g, ' '),
         confidence: parseFloat(confidence),
         probabilities: probabilities,
         classIndex: maxIndex
@@ -374,7 +428,7 @@ const QUALITY_MODEL = {
             confidence: { min: 70, max: 85 }
         },
         D: {
-            name: 'Poor Quality',
+            name: 'Not a Betel Leaf',
             minScore: 0,
             color: { greenMin: 0, yellowMax: 1.0, brownMax: 0.40 },
             texture: { edgeMax: 1.0 },
@@ -413,7 +467,7 @@ async function analyzeImage(imageData) {
             // Get additional characteristics using canvas analysis
             const characteristics = await getImageCharacteristics(imageData);
             
-            return {
+            const baseResult = {
                 grade: modelResult.grade,
                 gradeLabel: modelResult.gradeLabel,
                 confidence: parseFloat(modelResult.confidence),
@@ -422,14 +476,16 @@ async function analyzeImage(imageData) {
                 usingModel: true,
                 probabilities: modelResult.probabilities
             };
+            return applyAnalysisSensitivity(baseResult);
         }
     } catch (error) {
-        console.warn('TFLite model inference failed, falling back to canvas分析:', error.message);
+        console.warn('TFLite model inference failed, falling back to canvas analysis:', error.message);
     }
     
     // Fallback to canvas-based analysis
     console.log('Using canvas-based analysis');
-    return analyzeImageCanvas(imageData);
+    const canvasResult = await analyzeImageCanvas(imageData);
+    return applyAnalysisSensitivity(canvasResult);
 }
 
 // Canvas-based analysis (fallback)
@@ -516,6 +572,10 @@ async function getImageCharacteristics(imageData) {
 }
 
 // Show improved analysis result
+function getGradeTitle(grade) {
+    return grade === 'D' ? 'Not a Betel Leaf' : `Grade ${grade}`;
+}
+
 function showAnalysisResult(result) {
     const gradeColors = {
         'A': '#00c853',
@@ -535,7 +595,7 @@ function showAnalysisResult(result) {
         '<p style="color: #666; font-size: 0.9em; margin-top: 10px;"><i class="fas fa-robot"></i> Analysis by TFLite Model</p>' : 
         '<p style="color: #666; font-size: 0.9em; margin-top: 10px;"><i class="fas fa-image"></i> Analysis by Canvas Processing</p>';
     
-    const confidenceDisplay = document.getElementById('showConfidence')?.checked ? 
+    const confidenceDisplay = getAppSettings().showConfidence ?
         `<div style="margin-top: 15px; padding: 10px; background: #f5f5f5; border-radius: 8px;">
             <strong>Model Confidence:</strong> ${result.confidence.toFixed(2)}%
             <div style="width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; margin-top: 5px;">
@@ -568,8 +628,8 @@ function showAnalysisResult(result) {
             <div style="font-size: 4em; color: ${gradeColors[result.grade]}; margin-bottom: 10px;">
                 <i class="fas ${gradeIcons[result.grade]}"></i>
             </div>
-            <h2 style="color: ${gradeColors[result.grade]}; margin: 0 0 10px 0;">Grade ${result.grade}</h2>
-            <h3 style="color: #333; margin: 0 0 15px 0;">${result.gradeLabel}</h3>
+            <h2 style="color: ${gradeColors[result.grade]}; margin: 0 0 10px 0;">${getGradeTitle(result.grade)}</h2>
+            ${result.grade !== 'D' ? `<h3 style="color: #333; margin: 0 0 15px 0;">${result.gradeLabel}</h3>` : ''}
             ${confidenceDisplay}
             ${characteristicsHTML}
             ${modelInfo}
@@ -960,6 +1020,104 @@ const clearHistoryBtn = document.getElementById('clearHistory');
 // Camera Stream
 let cameraStream = null;
 
+// Audio context for sound alerts (lazy init)
+let audioContext = null;
+
+function playAnalysisSound(grade) {
+    if (!getAppSettings().soundAlerts) return;
+    try {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = audioContext;
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+
+        const frequencies = { A: 880, B: 660, C: 440, D: 330 };
+        oscillator.frequency.value = frequencies[grade] || 520;
+        oscillator.type = 'sine';
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.4);
+    } catch (error) {
+        console.warn('Sound alert unavailable:', error.message);
+    }
+}
+
+async function requestNotificationPermission() {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+}
+
+function showPushNotification(result) {
+    const settings = getAppSettings();
+    if (!settings.pushNotifications || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    const gradeLabels = {
+        A: 'Excellent Quality',
+        B: 'Good Quality',
+        C: 'Fair Quality',
+        D: 'Not a Betel Leaf'
+    };
+
+    new Notification('DAPONCHECK Analysis Complete', {
+        body: result.grade === 'D'
+            ? 'Not a Betel Leaf'
+            : `Grade ${result.grade} — ${gradeLabels[result.grade] || result.gradeLabel}`,
+        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍃</text></svg>',
+        tag: 'daponcheck-result'
+    });
+}
+
+function showSettingsToast(message, type = 'success') {
+    let toast = document.getElementById('settingsToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'settingsToast';
+        toast.className = 'settings-toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.className = `settings-toast settings-toast-${type} show`;
+    clearTimeout(showSettingsToast._timer);
+    showSettingsToast._timer = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+async function toggleTorch(enable) {
+    if (!cameraStream) return false;
+    const track = cameraStream.getVideoTracks()[0];
+    if (!track) return false;
+    try {
+        await track.applyConstraints({ advanced: [{ torch: enable }] });
+        return true;
+    } catch (error) {
+        console.warn('Torch/flash not supported on this device:', error.message);
+        return false;
+    }
+}
+
+function buildCameraConstraints() {
+    const settings = getAppSettings();
+    const resolution = CAMERA_RESOLUTIONS[settings.cameraResolution] || CAMERA_RESOLUTIONS.medium;
+    const constraints = {
+        video: {
+            facingMode: 'environment',
+            ...resolution
+        }
+    };
+    if (settings.autoFocus) {
+        constraints.video.focusMode = 'continuous';
+    }
+    return constraints;
+}
+
 // Current captured/uploaded image data
 let currentImageData = null;
 let currentFileType = null;
@@ -994,15 +1152,7 @@ navBtns.forEach(btn => {
 // Camera Functions
 async function startCamera() {
     try {
-        const constraints = {
-            video: {
-                facingMode: 'environment',
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            }
-        };
-        
-        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        cameraStream = await navigator.mediaDevices.getUserMedia(buildCameraConstraints());
         cameraFeed.srcObject = cameraStream;
         cameraFeed.style.display = 'block';
         cameraPlaceholder.style.display = 'none';
@@ -1015,6 +1165,12 @@ async function startCamera() {
         console.error('Error accessing camera:', error);
         alert('Unable to access camera. Please ensure camera permissions are granted.');
     }
+}
+
+async function restartCameraIfActive() {
+    if (!cameraStream) return;
+    stopCamera();
+    await startCamera();
 }
 
 function stopCamera() {
@@ -1031,8 +1187,17 @@ function stopCamera() {
     }
 }
 
-function captureImage() {
+async function captureImage() {
     if (!cameraStream) return;
+
+    const settings = getAppSettings();
+    if (settings.flashMode) {
+        const flashOk = await toggleTorch(true);
+        if (!flashOk && settings.flashMode) {
+            showSettingsToast('Flash not supported on this device', 'warning');
+        }
+        await new Promise(resolve => setTimeout(resolve, 150));
+    }
     
     const context = captureCanvas.getContext('2d');
     captureCanvas.width = cameraFeed.videoWidth;
@@ -1047,6 +1212,16 @@ function captureImage() {
     
     capturedImage.src = currentImageData;
     capturedImageContainer.style.display = 'block';
+
+    if (settings.flashMode) {
+        await toggleTorch(false);
+    }
+
+    if (settings.autoAnalysis) {
+        captureBtn.disabled = true;
+        await performQualityAnalysis('captured');
+        if (cameraStream) captureBtn.disabled = false;
+    }
 }
 
 startCameraBtn.addEventListener('click', startCamera);
@@ -1065,54 +1240,69 @@ retakePhotoBtn.addEventListener('click', () => {
     currentDimensions = null;
 });
 
-analyzeCapturedBtn.addEventListener('click', async () => {
+analyzeCapturedBtn.addEventListener('click', () => performQualityAnalysis('captured'));
+
+async function performQualityAnalysis(sourceType) {
     if (!currentImageData) return;
-    
-    analyzeCapturedBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
-    analyzeCapturedBtn.disabled = true;
-    
+
+    const analyzeBtn = sourceType === 'captured' ? analyzeCapturedBtn : analyzeUploadedBtn;
+    const originalHtml = analyzeBtn.innerHTML;
+
+    analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+    analyzeBtn.disabled = true;
+
     try {
-        // Use real image analysis (TFLite model prioritized)
         const analysisResult = await analyzeImage(currentImageData);
-        
-        // Save to database
-        await api.addQualityCheck({
-            type: currentFileType,
-            imageData: currentImageData,
-            fileName: currentFileName,
-            fileSize: currentFileSize,
-            dimensions: currentDimensions,
-            grade: analysisResult.grade,
-            gradeLabel: analysisResult.gradeLabel,
-            confidence: analysisResult.confidence,
-            characteristics: analysisResult.characteristics,
-            qualityClass: analysisResult.qualityClass,
-            imageRemoved: currentImageData && currentImageData.length > 50000
-        });
-        
-        // Refresh activity list
-        await loadActivityFromDatabase();
-        
-        analyzeCapturedBtn.innerHTML = '<i class="fas fa-search"></i> Analyze Quality';
-        analyzeCapturedBtn.disabled = false;
-        
-        // Display detailed analysis result with improved UI
+        const settings = getAppSettings();
+
+        if (settings.saveHistory) {
+            await api.addQualityCheck({
+                type: currentFileType || sourceType,
+                imageData: currentImageData,
+                fileName: currentFileName,
+                fileSize: currentFileSize,
+                dimensions: currentDimensions,
+                grade: analysisResult.grade,
+                gradeLabel: analysisResult.gradeLabel,
+                confidence: analysisResult.confidence,
+                characteristics: analysisResult.characteristics,
+                qualityClass: analysisResult.qualityClass,
+                imageRemoved: currentImageData && currentImageData.length > 50000
+            });
+            await loadActivityFromDatabase();
+        }
+
         showAnalysisResult(analysisResult);
-        
-        // Clear current data
+        playAnalysisSound(analysisResult.grade);
+        showPushNotification(analysisResult);
+
+        if (sourceType === 'captured') {
+            capturedImageContainer.style.display = 'none';
+            capturedImage.src = '';
+        } else {
+            uploadedImage.src = '';
+            uploadedImageContainer.style.display = 'none';
+            uploadArea.style.display = 'block';
+            fileInput.value = '';
+            fileName.textContent = '';
+            fileSize.textContent = '';
+            imageDimensions.textContent = '';
+        }
+
         currentImageData = null;
         currentFileType = null;
         currentFileName = null;
         currentFileSize = null;
         currentDimensions = null;
-        
+
     } catch (error) {
         console.error('Analysis error:', error);
-        analyzeCapturedBtn.innerHTML = '<i class="fas fa-search"></i> Analyze Quality';
-        analyzeCapturedBtn.disabled = false;
         alert('Analysis failed: ' + error.message + '\n\nPlease try again.');
+    } finally {
+        analyzeBtn.innerHTML = originalHtml;
+        analyzeBtn.disabled = false;
     }
-});
+}
 
 // Upload Functions
 uploadArea.addEventListener('click', () => {
@@ -1170,9 +1360,13 @@ function handleFileUpload(file) {
         
         // Get image dimensions
         const img = new Image();
-        img.onload = () => {
+        img.onload = async () => {
             currentDimensions = `${img.width} x ${img.height}`;
             imageDimensions.textContent = `${img.width} x ${img.height} pixels`;
+
+            if (getAppSettings().autoAnalysis) {
+                await performQualityAnalysis('uploaded');
+            }
         };
         img.src = e.target.result;
     };
@@ -1204,54 +1398,7 @@ clearUploadBtn.addEventListener('click', () => {
     currentDimensions = null;
 });
 
-analyzeUploadedBtn.addEventListener('click', async () => {
-    if (!currentImageData) return;
-    
-    analyzeUploadedBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
-    analyzeUploadedBtn.disabled = true;
-    
-    try {
-        // Use real image analysis (TFLite model prioritized)
-        const analysisResult = await analyzeImage(currentImageData);
-        
-        // Save to database
-        await api.addQualityCheck({
-            type: currentFileType,
-            imageData: currentImageData,
-            fileName: currentFileName,
-            fileSize: currentFileSize,
-            dimensions: currentDimensions,
-            grade: analysisResult.grade,
-            gradeLabel: analysisResult.gradeLabel,
-            confidence: analysisResult.confidence,
-            characteristics: analysisResult.characteristics,
-            qualityClass: analysisResult.qualityClass,
-            imageRemoved: currentImageData && currentImageData.length > 50000
-        });
-        
-        // Refresh activity list
-        await loadActivityFromDatabase();
-        
-        analyzeUploadedBtn.innerHTML = '<i class="fas fa-search"></i> Analyze Quality';
-        analyzeUploadedBtn.disabled = false;
-        
-        // Display detailed analysis result with improved UI
-        showAnalysisResult(analysisResult);
-        
-        // Clear current data
-        currentImageData = null;
-        currentFileType = null;
-        currentFileName = null;
-        currentFileSize = null;
-        currentDimensions = null;
-        
-    } catch (error) {
-        console.error('Analysis error:', error);
-        analyzeUploadedBtn.innerHTML = '<i class="fas fa-search"></i> Analyze Quality';
-        analyzeUploadedBtn.disabled = false;
-        alert('Analysis failed: ' + error.message + '\n\nPlease try again.');
-    }
-});
+analyzeUploadedBtn.addEventListener('click', () => performQualityAnalysis('uploaded'));
 
 // Activity Functions
 async function loadActivityFromDatabase() {
@@ -1285,7 +1432,10 @@ function renderActivityList(checks) {
         const statusClass = check.grade === 'A' ? 'success' : check.grade === 'B' ? 'warning' : check.grade === 'C' ? 'warning' : 'danger';
         const statusIcon = check.grade === 'A' ? 'fa-check-circle' : check.grade === 'B' ? 'fa-exclamation-circle' : check.grade === 'C' ? 'fa-exclamation-circle' : 'fa-times-circle';
         // Use the stored gradeLabel from the analysis result
-        const gradeText = check.gradeLabel || (check.grade === 'A' ? 'High' : check.grade === 'B' ? 'Medium' : check.grade === 'C' ? 'Poor' : 'Not Betel Leaf');
+        const gradeText = check.gradeLabel || (check.grade === 'A' ? 'High' : check.grade === 'B' ? 'Medium' : check.grade === 'C' ? 'Poor' : 'Not a Betel Leaf');
+        const resultDisplay = check.grade === 'D'
+            ? 'Not a Betel Leaf'
+            : `Grade: ${check.grade} - ${gradeText}`;
         
         // Add indicator if image was removed due to storage optimization
         const imageNote = check.imageRemoved ? ' <span style="color: #999; font-size: 0.8em;">(Image not saved)</span>' : '';
@@ -1297,7 +1447,7 @@ function renderActivityList(checks) {
                 </div>
                 <div class="activity-details">
                     <h4>Quality Check - ${check.type.charAt(0).toUpperCase() + check.type.slice(1)}${imageNote}</h4>
-                    <p class="activity-result">Grade: ${check.grade} - ${gradeText}</p>
+                    <p class="activity-result">${resultDisplay}</p>
                     <p class="activity-date">${dateString}, ${timeString}</p>
                 </div>
                 <div class="activity-status ${statusClass}">
@@ -1376,7 +1526,7 @@ clearHistoryBtn.addEventListener('click', async () => {
 });
 
 // Save settings to database
-async function saveSettings() {
+async function saveSettings(changedInput) {
     const settings = {
         cameraResolution: document.getElementById('cameraResolution').value,
         flashMode: document.getElementById('flashMode').checked.toString(),
@@ -1391,8 +1541,28 @@ async function saveSettings() {
     
     try {
         await api.updateSettings(settings);
+        showSettingsToast('Settings saved');
+
+        if (settings.pushNotifications === 'true') {
+            const granted = await requestNotificationPermission();
+            if (!granted) {
+                document.getElementById('pushNotifications').checked = false;
+                await api.updateSettings({ pushNotifications: 'false' });
+                showSettingsToast('Notification permission denied', 'warning');
+            }
+        }
+
+        if (changedInput && ['cameraResolution', 'autoFocus'].includes(changedInput.id) && cameraStream) {
+            await restartCameraIfActive();
+            showSettingsToast('Camera restarted with new settings');
+        }
+
+        if (changedInput && changedInput.id === 'soundAlerts' && settings.soundAlerts === 'true') {
+            playAnalysisSound('A');
+        }
     } catch (error) {
         console.error('Error saving settings:', error);
+        showSettingsToast('Failed to save settings', 'error');
     }
 }
 
@@ -1411,6 +1581,10 @@ async function loadSettings() {
             document.getElementById('pushNotifications').checked = settings.pushNotifications === 'true';
             document.getElementById('soundAlerts').checked = settings.soundAlerts === 'true';
             document.getElementById('saveHistory').checked = settings.saveHistory === 'true';
+
+            if (settings.pushNotifications === 'true') {
+                await requestNotificationPermission();
+            }
         }
     } catch (error) {
         console.error('Error loading settings:', error);
@@ -1419,7 +1593,7 @@ async function loadSettings() {
 
 // Add event listeners to all setting inputs
 document.querySelectorAll('.setting-select, .toggle-switch input').forEach(input => {
-    input.addEventListener('change', saveSettings);
+    input.addEventListener('change', () => saveSettings(input));
 });
 
 // Initialize on page load
