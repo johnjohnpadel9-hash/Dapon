@@ -6,7 +6,7 @@ The DAPONCHECK application now includes functional betel leaf quality grading us
 
 ## Model Information
 
-**Model Name:** betel_leaf_quality_model.tflite  
+**Model Name:** BetelLeafDataset_model.tflite  
 **Framework:** TensorFlow Lite  
 **Input Size:** 224x224 pixels (RGB images)  
 **Output:** 4 classifications - high, medium, poor, not_betel_leaf  
@@ -42,7 +42,7 @@ The DAPONCHECK application now includes functional betel leaf quality grading us
 # Ensure directory structure:
 daponcheck/
 ├── model/
-│   ├── betel_leaf_quality_model.tflite
+│   ├── BetelLeafDatasetmodel.tflite
 │   └── labels.txt
 ├── index.html
 ├── api.php
